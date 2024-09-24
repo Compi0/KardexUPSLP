@@ -1,0 +1,207 @@
+<?php
+    session_start();
+    require('../fpdf.php');
+    class PDF_TextBox extends FPDF
+{
+
+/**
+ * Draws text within a box defined by width = w, height = h, and aligns
+ * the text vertically within the box ($valign = M/B/T for middle, bottom, or top)
+ * Also, aligns the text horizontally ($align = L/C/R/J for left, centered, right or justified)
+ * drawTextBox uses drawRows
+ *
+ * This function is provided by TUFaT.com
+ */
+function drawTextBox($strText, $w, $h, $align='L', $valign='T', $border=true)
+{
+    $xi=$this->GetX();
+    $yi=$this->GetY();
+    
+    $hrow=$this->FontSize;
+    $textrows=$this->drawRows($w,$hrow,$strText,0,$align,0,0,0);
+    $maxrows=floor($h/$this->FontSize);
+    $rows=min($textrows,$maxrows);
+
+    $dy=0;
+    if (strtoupper($valign)=='M')
+        $dy=($h-$rows*$this->FontSize)/2;
+    if (strtoupper($valign)=='B')
+        $dy=$h-$rows*$this->FontSize;
+
+    $this->SetY($yi+$dy);
+    $this->SetX($xi);
+
+    $this->drawRows($w,$hrow,$strText,0,$align,false,$rows,1);
+
+    if ($border)
+        $this->Rect($xi,$yi,$w,$h);
+}
+
+function drawRows($w, $h, $txt, $border=0, $align='J', $fill=false, $maxline=0, $prn=0)
+{
+    $cw=&$this->CurrentFont['cw'];
+    if($w==0)
+        $w=$this->w-$this->rMargin-$this->x;
+    $wmax=($w-2*$this->cMargin)*1000/$this->FontSize;
+    $s=str_replace("\r",'',$txt);
+    $nb=strlen($s);
+    if($nb>0 && $s[$nb-1]=="\n")
+        $nb--;
+    $b=0;
+    if($border)
+    {
+        if($border==1)
+        {
+            $border='LTRB';
+            $b='LRT';
+            $b2='LR';
+        }
+        else
+        {
+            $b2='';
+            if(is_int(strpos($border,'L')))
+                $b2.='L';
+            if(is_int(strpos($border,'R')))
+                $b2.='R';
+            $b=is_int(strpos($border,'T')) ? $b2.'T' : $b2;
+        }
+    }
+    $sep=-1;
+    $i=0;
+    $j=0;
+    $l=0;
+    $ns=0;
+    $nl=1;
+    while($i<$nb)
+    {
+        //Get next character
+        $c=$s[$i];
+        if($c=="\n")
+        {
+            //Explicit line break
+            if($this->ws>0)
+            {
+                $this->ws=0;
+                if ($prn==1) $this->_out('0 Tw');
+            }
+            if ($prn==1) {
+                $this->Cell($w,$h,substr($s,$j,$i-$j),$b,2,$align,$fill);
+            }
+            $i++;
+            $sep=-1;
+            $j=$i;
+            $l=0;
+            $ns=0;
+            $nl++;
+            if($border && $nl==2)
+                $b=$b2;
+            if ( $maxline && $nl > $maxline )
+                return substr($s,$i);
+            continue;
+        }
+        if($c==' ')
+        {
+            $sep=$i;
+            $ls=$l;
+            $ns++;
+        }
+        $l+=$cw[$c];
+        if($l>$wmax)
+        {
+            //Automatic line break
+            if($sep==-1)
+            {
+                if($i==$j)
+                    $i++;
+                if($this->ws>0)
+                {
+                    $this->ws=0;
+                    if ($prn==1) $this->_out('0 Tw');
+                }
+                if ($prn==1) {
+                    $this->Cell($w,$h,substr($s,$j,$i-$j),$b,2,$align,$fill);
+                }
+            }
+            else
+            {
+                if($align=='J')
+                {
+                    $this->ws=($ns>1) ? ($wmax-$ls)/1000*$this->FontSize/($ns-1) : 0;
+                    if ($prn==1) $this->_out(sprintf('%.3F Tw',$this->ws*$this->k));
+                }
+                if ($prn==1){
+                    $this->Cell($w,$h,substr($s,$j,$sep-$j),$b,2,$align,$fill);
+                }
+                $i=$sep+1;
+            }
+            $sep=-1;
+            $j=$i;
+            $l=0;
+            $ns=0;
+            $nl++;
+            if($border && $nl==2)
+                $b=$b2;
+            if ( $maxline && $nl > $maxline )
+                return substr($s,$i);
+        }
+        else
+            $i++;
+    }
+    //Last chunk
+    if($this->ws>0)
+    {
+        $this->ws=0;
+        if ($prn==1) $this->_out('0 Tw');
+    }
+    if($border && is_int(strpos($border,'B')))
+        $b.='B';
+    if ($prn==1) {
+        $this->Cell($w,$h,substr($s,$j,$i-$j),$b,2,$align,$fill);
+    }
+    $this->x=$this->lMargin;
+    return $nl;
+}
+
+}
+    include 'conn.php';
+    $conn=new mysqli($servername,$username,$password,$dbname);
+    if($conn->connect_error){
+        die ("There was an error ".$conn->connect_error);
+    }
+    $user = $_SESSION["alumno"];
+    $sql="SELECT id,matricula,semestre, materia, seccion, periodo, cfo, ext, reg, cf, creditos, status FROM kardex WHERE matricula='".$user."'";
+    $result = $conn->query($sql);
+    
+    $pdf=new PDF_TextBox();
+    $pdf->AddPage();
+    $pdf->SetFont('Arial','',15);
+    $x = 0;
+    $y = 0;
+    $k = 0;
+    $n=0;
+    while($row = $result->fetch_assoc()){
+        if($n === 7){
+            $pdf->AddPage();
+            $x = 0;$y = 0;$k = 0;$n=0;
+        }
+        if($k === 6){
+            $y+= 35;
+            $k=0;
+            $x = 0;
+            $n++;
+        }
+        if($row["status"] === "Aprobado"){
+            $pdf->SetTextColor(10, 145, 12);
+        }else if($row["status"] === "cursando"){
+            $pdf->SetTextColor(201, 201, 20);
+        }else{
+            $pdf->SetTextColor(227, 5, 5);
+        }
+        $materia = $row["materia"];
+        $pdf->SetXY($x,$y);
+        $pdf->drawTextBox($materia, 35, 35, 'C', 'M');
+        $x+= 35;
+        $k++;
+    }
+    $pdf->Output();
+?>
